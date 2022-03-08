@@ -21,7 +21,7 @@ You can get your api token at https://learn-2.galvanize.com/api_token
 `
 
 // currentReleaseVersion is used to print the version the user currently has downloaded
-const currentReleaseVersion = "v0.9.3"
+const currentReleaseVersion = "v0.10.0"
 
 // rootCmd is the base for all our commands. It currently just checks for all the
 // necessary credentials and prompts the user to set them if they are not there.
@@ -67,6 +67,9 @@ var OpenPreview bool
 
 // Ignore local changes and publish remote only
 var IgnoreLocal bool
+
+// Running in a CI environment and should not try to push changes
+var CiCdEnvironment bool
 
 func init() {
 	u, err := user.Current()
@@ -115,6 +118,7 @@ func init() {
 	previewCmd.Flags().BoolVarP(&FileOnly, "fileonly", "x", false, "Excludes images when previewing a single file, defaults false")
 	publishCmd.Flags().StringVarP(&UnitsDirectory, "units", "u", "", "The directory where your units exist")
 	publishCmd.Flags().BoolVarP(&IgnoreLocal, "ignore-local", "", false, "Ignore local changes and publish remote only")
+	publishCmd.Flags().BoolVarP(&CiCdEnvironment, "ci-cd", "", false, "Running in a CI/CD environment (cannot use with autoconfig feature)")
 	markdownCmd.Flags().BoolVarP(&PrintTemplate, "out", "o", false, "Prints the template to stdout")
 	markdownCmd.Flags().BoolVarP(&Minimal, "min", "m", false, "Uses a terse, minimal version of the template")
 }

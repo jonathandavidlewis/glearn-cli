@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"regexp"
+
 	"github.com/briandowns/spinner"
 	"github.com/gSchool/glearn-cli/api/learn"
 	"github.com/spf13/cobra"
@@ -93,7 +95,11 @@ new block. If the block already exists, it will update the existing block.
 		}
 		fmt.Printf("Publishing block with repo name %s from branch %s\n", repoPieces.RepoName, branch)
 
-		if createdConfig {
+		if createdConfig && CiCdEnvironment {
+			fmt.Println("\nError: You cannot use autoconfig.yaml from a CI/CD environment.")
+			fmt.Println("Please create a config.yaml file and commit it.")
+			os.Exit(1)
+		} else if createdConfig {
 			fmt.Println("Committing autoconfig.yaml to", branch)
 			err = addAutoConfigAndCommit()
 
@@ -103,12 +109,15 @@ new block. If the block already exists, it will update the existing block.
 			}
 		}
 
-		fmt.Println("Pushing work to remote origin", branch)
+		// Do not push if in a CI/CD environment
+		if !CiCdEnvironment {
+			fmt.Println("Pushing work to remote origin", branch)
 
-		err = pushToRemote(branch)
-		if err != nil {
-			fmt.Printf("\nError pushing to origin remote on branch:\n\n%s", err)
-			os.Exit(1)
+			err = pushToRemote(branch)
+			if err != nil {
+				fmt.Printf("\nError pushing to origin remote on branch:\n\n%s", err)
+				os.Exit(1)
+			}
 		}
 
 		// Start benchmark for creating master release & building on learn
@@ -192,34 +201,27 @@ func currentBranch() (string, error) {
 	return runBashCommand(branchCommand)
 }
 
+var hostedGitRe = regexp.MustCompile(`^(:?(\w+):\/\/\/?)?(?:(~?\w+)@)?([\w\d\.\-_]+)(:?:([\d]+))?(?::)?\/*(.*)\/([\w\d\.\-_]+)(?:\.git)\/?$`)
+
+func parseHostedGitRegex(originUrl string) (repoParts learn.RepoPieces, err error) {
+	var repoPieces learn.RepoPieces
+	if m := hostedGitRe.FindStringSubmatch(originUrl); m != nil {
+		repoPieces, err = learn.RepoPieces{
+			Origin: m[4],
+			Org: m[7],
+			RepoName: m[8],
+		}, nil
+	}
+	return repoPieces, err
+}
+
 func remotePieces() (learn.RepoPieces, error) {
 	var repoPieces learn.RepoPieces
 	s, err := runBashCommand(pushRemoteCommand)
 	if err != nil {
 		return repoPieces, err
 	}
-	parts := strings.Split(s, ".git")
-	if len(parts) < 1 { // There should only be 1
-		return repoPieces, fmt.Errorf("Error parsing git remote from %s", s)
-	}
-	parts = strings.Split(parts[0], "/")
-
-	// does it start with https
-	if parts[0] == "https:" || parts[0] == "ssh:" {
-		repoPieces.Origin = strings.ReplaceAll(parts[2], "git@", "")
-		repoPieces.Org = parts[3]
-		repoPieces.RepoName = parts[4]
-
-		return repoPieces, nil
-	}
-
-	repoPieces.RepoName = parts[1]
-	parts = strings.Split(parts[0], ":")
-	repoPieces.Org = parts[1]
-	parts = strings.Split(parts[0], "@")
-	repoPieces.Origin = parts[1]
-
-	return repoPieces, nil
+	return parseHostedGitRegex(s)
 }
 
 func pushToRemote(branch string) error {
